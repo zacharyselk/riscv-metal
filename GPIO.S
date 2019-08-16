@@ -1,0 +1,209 @@
+.global setPinMode
+.global getPinMode
+.global setPinValue
+.global setHWIOF
+
+.data
+
+PIN_INPUT_VALUE:					.word 0x10012000
+PIN_INPUT_ENABLE:					.word 0x10012004
+PIN_OUTPUT_ENABLE:					.word 0x10012008
+PIN_OUTPUT_VALUE:					.word 0x1001200C
+PIN_PULLUP_ENABLE:					.word 0x10012010
+PIN_DRIVE_STRENGTH:					.word 0x10012014
+POSITIVE_EDGE_INTERRUPT_ENABLE:		.word 0x10012018
+POSITIVE_EDGE_INTERRUPT_PENDING:	.word 0x1001201C
+NEGATIVE_EDGE_INTERRUPT_ENABLE:		.word 0x10012020
+NEGATIVE_EDGE_INTERRUPT_PENDING:	.word 0x10012024
+HIGH_INTERRUPT_ENABLE:				.word 0x10012028
+HIGH_INTERRUPT_PENDING:				.word 0x1001202C
+LOW_INTERRUPT_ENABLE:				.word 0x10012030
+LOW_INTERRUPT_PENDING:				.word 0x10012034
+HW_IO_FUNCTION_ENABLE:				.word 0x10012038
+HW_IO_FUNCTION_SELECT:				.word 0x1001203C
+PIN_INVERT_OUTPUT:					.word 0x10012040
+
+.text
+#------------------------------------------------------------------------------
+# setPinMode
+# Args:
+#   a0 - The GPIO pin to set
+#   a1 - The mode to set; 0 for output; 1 for input, -1 to disable the pin
+#
+# Sets whether a pin is configured to output mode, input mode, or disabled
+#------------------------------------------------------------------------------
+setPinMode:
+	addi	t0, zero, 1
+	sll		t0, t0, a0		# t0 <- pinMask
+	not		t1, t0			# t1 <- ~pinMask
+	la		t2, PIN_INPUT_ENABLE
+	la		t3, PIN_OUTPUT_ENBLE
+	lw		t2, 0(t2)		# t2 <- &pinInputEnable
+	lw		t3, 0(t3)		# t3 <- &pinOutputEnable
+	lw		t4, 0(t2)		# t4 <- pinInputEnable
+	lw		t5, 0(t3)		# t5 <- pinOutputEnable
+
+	# Select wich mode to set
+	beq		a1, zero, setPinModeOut		# if(a1 == 0) Output
+	bge		a1, zero, setPinModeIn		# elif(a1 > 0) Input
+	j		setPinModeDisable			# else Disable
+
+	setPinModeOut:
+	and		t6, t4, t1		# t6 = pinInputEnable & ~pinMask
+	sw		t6, 0(t2)		# &pinInputEnable &= ~pinMask
+	or		t6, t5, t0		# t6 = pinOutputEnable | pinMask
+	sw		t6, 0(t3)		# &pinOutputEnable |= pinMask
+	j		setPinModeEnd
+
+	setPinModeIn:
+	and		t6, t5, t1		# t6 = pinOutputEnable & ~pinMask
+	sw		t6, 0(t3)		# &pinOutputEnable &= ~pinMask
+	or		t6, t4, t0		# t6 = pinInputEnable | pinMask
+	sw		t6, 0(t2)		# &pinInputEnable |= pinMask
+	j		setPinModeEnd
+
+	setPinModeDisable:
+	or		t6, t4, t1		# t6 = pinInputEnable & ~pinMask
+	sw		t6, 0(t2)		# &pinInputEnable &= ~pinMask
+	or		t6, t5, t1		# t6 = pinOutputEnable & ~pinMask
+	sw		t6, 0(t3)		# &pinOutputEnable &= ~pinMask
+	j		setPinModeEnd
+
+	setPinModeEnd:
+	jalr	zero, ra, 0
+
+
+#------------------------------------------------------------------------------
+# getPinMode
+# Args:
+#   a0 - The GPIO pin
+# Returns:
+#   a0 - The mode; 0 if output, 1 if input, -1 if disabled
+#
+# Returns what mode the given pin is in
+#------------------------------------------------------------------------------
+getPinMode:
+	addi	t0, zero, 1
+	sll		t0, t0, a0		# t0 <- pinMask
+	la		t1, PIN_INPUT_ENABLE
+	la		t2, PIN_OUTPUT_ENBLE
+	lw		t1, 0(t1)		# t1 <- &pinInputEnable
+	lw		t2, 0(t2)		# t2 <- &pinOutputEnable
+	lw		t1, 0(t1)		# t1 <- pinInputEnable
+	lw		t2, 0(t2)		# t2 <- pinOutputEnable
+
+	and		t3, t1, t0		# t3 = pinInputEnable & pinMask
+	and		t4, t2, t0		# t4 = pinOutputEnable & pinMask
+	bne		t3, zero, getPinModeIn	# if(pinInputEnable & pinMask != 0) In
+	bne		t4, zero, getPinModeOut # elif(pinOutputEnable & pinMask != 0) Out
+	j		getPinModeDisabled		# else Disabled
+
+	getPinModeIn:
+	addi	a0, zero, 1		# Mode = 1
+	j		getPinModeEnd
+
+	getPinModeOut:
+	addi	a0, zero, 0		# Mode = 0
+	j		getPinModeEnd
+
+	getPinModeDisabled:
+	addi	a0, zero, -1	# Mode = -1
+	j		getPinModeEnd
+
+	getPinModeEnd:
+	jalr	zero, ra, 0
+
+
+#------------------------------------------------------------------------------
+# setGPIO
+# Args:
+#   a0 - The GPIO Pin to set
+#   a1 - The value to set
+#
+# Sets one of the GPIO pins to either LOW (zero) or HIGH (any non-zero value)
+#------------------------------------------------------------------------------
+setPinValue:
+	addi	t0, zero, 1
+	sll		t0, t0, a0		# t0 <- pinMask
+	not		t1, t0			# t1 <- ~pinMask
+	la		t2, PIN_OUTPUT_VALUE
+	lw		t2, 0(t2)		# t2 <- &pinOutputValue
+	lw		t3, 0(t2)		# t3 <- pinOutputValue
+
+	# Set either high or low
+	beq		a0, zero, setPinValueLow
+	j		setPinValueHigh
+
+	setPinValueLow:
+	and		t4, t3, t1		# t4 <- pinOutputValue & ~pinMask
+	sw		t4, 0(t2)		# &pinOutputValue &= ~pinMask
+	j		setPinValueEnd
+
+	setPinValueHigh:
+	or		t4, t3, t0		# t4 <- pinOutputValue | pinMask
+	sw		t4, 0(t2)		# &pinOutputValue |= pinMask
+	j		setPinValueEnd
+
+	setPinValueEnd:
+	jalr	zero, ra, 0
+
+
+#------------------------------------------------------------------------------
+# setHWIOF
+# Args:
+#   a0 - The GPIO pin selected
+#   a1 - 1 to enable IO functions or 0 to disable
+#   a2 - Which IO function to select; 0 for IOF0, 1 for IOF1, and -1 to disable
+#        IO functions
+#
+# Sets one of the IO functions accosiated with a GPIO pin or disables IO
+# functions on that pin
+#------------------------------------------------------------------------------
+setHWIOF:
+	la		t0, HW_IO_FUNCTION_ENABLE
+	la		t1, HW_IO_FUNCTION_SELECT
+	lw		t0, 0(t0)		# t0 <- &HWIOF_en
+	lw		t1, 0(t1)		# t1 <- &HWIOF_sel
+	addi	t2, zero, 1		# t2 = 1
+	slli	t2, t2, a0		# t2 <- pinMask = 1 << pinNumber
+	lw		t3, 0(t0)		# t3 <- HWIOF_en
+
+	blt		a1, zero, setHWIOFDisable
+	j		setHWIOFEnable
+
+	setHWIOFDisable:
+	# Disable HW_IOF for the pin
+	not		t2, t2			# t2 <- ~pinMask
+	and		t3, t3, t2
+	sw		t3, 0(t0)		# HWIOF_en ^= ~pinMask
+	j		setHWIOFEnd
+
+	setHWIOFEnable:
+	# Enable HW_IOF for the pin
+	or		t3, t3, t2
+	sw		t3, 0(t0)		# HWIOF_en |= pinMask
+
+	lw		t3, 0(t1)		# t3 <- HWIOF_sel
+	beq		a1, zero, setHWIOF0
+	j		setHWIOF1
+
+
+	setHWIOF0:
+	# Select IOF0 for the pin
+	not		t2, t2			# t2 <- ~pinMask
+	and		t3, t3, t2
+	sw		t3, 0(t1)		# HWIOF_sel ^= ~pinMask
+	j		setHWIOFEnd
+
+	setHWIOF1:
+	# Select IOF1 for the pin
+	or		t3, t3, t2
+	sw		t3, 0(t1)		# HWIOF_sel |= pinMask
+	j		setHWIOFEnd
+
+
+	setHWIOFEnd:
+	jr		zero, ra, 0
+
+
+
