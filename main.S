@@ -5,6 +5,17 @@ main:
 addi sp, sp, -4
 sw ra, 0(sp)
 
+addi t0, zero, 1
+slli t0, t0, 25
+li t1, 0x0C002000
+sw t0, 0(t1)
+
+li t0, 0x0C200004
+addi t1, zero, 4
+lw t2, 0(t0)
+sw t2, 0(t0)
+lw t3, 0(t0)
+
 addi a0, zero, 16
 addi a1, zero, 0
 jal setPinMode
@@ -92,6 +103,8 @@ sw s10, 104(sp)
 sw s11, 108(sp)
 
 csrr t0, mcause
+li t1, 0x0C001000
+lw t1, 0(t1)
 
 addi a0, zero, 18
 addi a1, zero, 0
