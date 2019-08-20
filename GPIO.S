@@ -2,6 +2,8 @@
 .global getPinMode
 .global setPinValue
 .global setHWIOF
+.global togglePinValue
+.global pinToGPIO
 
 .data
 
@@ -37,7 +39,7 @@ setPinMode:
 	sll		t0, t0, a0		# t0 <- pinMask
 	not		t1, t0			# t1 <- ~pinMask
 	la		t2, PIN_INPUT_ENABLE
-	la		t3, PIN_OUTPUT_ENBLE
+	la		t3, PIN_OUTPUT_ENABLE
 	lw		t2, 0(t2)		# t2 <- &pinInputEnable
 	lw		t3, 0(t3)		# t3 <- &pinOutputEnable
 	lw		t4, 0(t2)		# t4 <- pinInputEnable
@@ -86,7 +88,7 @@ getPinMode:
 	addi	t0, zero, 1
 	sll		t0, t0, a0		# t0 <- pinMask
 	la		t1, PIN_INPUT_ENABLE
-	la		t2, PIN_OUTPUT_ENBLE
+	la		t2, PIN_OUTPUT_ENABLE
 	lw		t1, 0(t1)		# t1 <- &pinInputEnable
 	lw		t2, 0(t2)		# t2 <- &pinOutputEnable
 	lw		t1, 0(t1)		# t1 <- pinInputEnable
@@ -165,7 +167,7 @@ setHWIOF:
 	lw		t0, 0(t0)		# t0 <- &HWIOF_en
 	lw		t1, 0(t1)		# t1 <- &HWIOF_sel
 	addi	t2, zero, 1		# t2 = 1
-	slli	t2, t2, a0		# t2 <- pinMask = 1 << pinNumber
+	sll	t2, t2, a0		# t2 <- pinMask = 1 << pinNumber
 	lw		t3, 0(t0)		# t3 <- HWIOF_en
 
 	blt		a1, zero, setHWIOFDisable
@@ -203,7 +205,73 @@ setHWIOF:
 
 
 	setHWIOFEnd:
-	jr		zero, ra, 0
+	jalr		zero, ra, 0
 
 
+#------------------------------------------------------------------------------
+# togglePinValue
+# Args:
+#   a0 - Pin to toggle
+#
+# Toggles the output value of a given pin
+#------------------------------------------------------------------------------
+togglePinValue:
+la t0, PIN_OUTPUT_VALUE
+lw t0, 0(t0)				#t0 <- &PinValue
+lw t1, 0(t0)				#t1 <- PinValue
 
+addi t2, zero, 1			#t2 = 1
+sll t3, t2, a0				#t3 <- pinMask = 1 << pinNum
+xor t4, t3, t1				#t4 <- newPinVal = pinMask ^ pinVal
+
+sw t4, 0(t0)				#store newPinVal
+jalr zero, ra, 0				#return
+
+#------------------------------------------------------------------------------
+# pinToGPIO
+# Args:
+#   a0 - pinNum
+# Returns:
+#   a0 - GPIONum
+#
+# Converts a given pin number to its corresponding GPIO number
+#------------------------------------------------------------------------------
+pinToGPIO:
+blt	a0, zero, pinToGPIOInvalid		#if(pinNum < 0) return -1
+
+add t0, zero, a0
+addi t1, zero, 8
+beq a0, t1, pinToGPIOInvalid			#if(pinNum == 8) return -1
+blt a0, t1, pinToGPIOGroup0			#if(0 <= pinNum < 8) pinToGPIOGroup0
+
+addi t2, zero, 14
+beq a0, t2,pinToGPIOInvalid	#if (pinNum == 14) return -1
+blt a0, t2, pinToGPIOGroup1			#if (8 < pinNum < 14) pinToGPIOGroup1
+
+addi t1, zero, 20
+blt	a0, t1, pinToGPIOGroup2			#if (14 < pinNum < 20) pinToGPIOGroup2
+
+j pinToGPIOInvalid					#if (pinNum >= 20) return -1
+
+pinToGPIOGroup0:
+# a0 = 16 + a0
+addi a0, a0, 16
+j pinToGPIOEnd
+
+pinToGPIOGroup1:
+# a0 = a0 -8
+addi a0, a0, -8
+j pinToGPIOEnd
+
+pinToGPIOGroup2:
+# a0 = a0 -6
+addi a0, a0, -6
+j pinToGPIOEnd
+
+pinToGPIOInvalid:
+#a0 = -1
+addi a0, zero, -1
+j pinToGPIOEnd
+
+pinToGPIOEnd:
+jalr zero, ra, 0
