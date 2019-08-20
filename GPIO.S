@@ -4,6 +4,7 @@
 .global setHWIOF
 .global togglePinValue
 .global pinToGPIO
+.global GPIOEnableInterrupt
 
 .data
 
@@ -72,7 +73,7 @@ setPinMode:
 	j		setPinModeEnd
 
 	setPinModeEnd:
-	jalr	zero, ra, 0
+	ret
 
 
 #------------------------------------------------------------------------------
@@ -113,8 +114,7 @@ getPinMode:
 	j		getPinModeEnd
 
 	getPinModeEnd:
-	jalr	zero, ra, 0
-
+	ret
 
 #------------------------------------------------------------------------------
 # setGPIO
@@ -147,7 +147,7 @@ setPinValue:
 	j		setPinValueEnd
 
 	setPinValueEnd:
-	jalr	zero, ra, 0
+	ret
 
 
 #------------------------------------------------------------------------------
@@ -205,7 +205,7 @@ setHWIOF:
 
 
 	setHWIOFEnd:
-	jalr		zero, ra, 0
+	ret
 
 
 #------------------------------------------------------------------------------
@@ -225,7 +225,7 @@ sll t3, t2, a0				#t3 <- pinMask = 1 << pinNum
 xor t4, t3, t1				#t4 <- newPinVal = pinMask ^ pinVal
 
 sw t4, 0(t0)				#store newPinVal
-jalr zero, ra, 0				#return
+ret							#return
 
 #------------------------------------------------------------------------------
 # pinToGPIO
@@ -274,4 +274,66 @@ addi a0, zero, -1
 j pinToGPIOEnd
 
 pinToGPIOEnd:
-jalr zero, ra, 0
+ret
+
+
+#------------------------------------------------------------------------------
+# GPIOinterrupt
+# Args:
+#   a0 - pinNum
+#	a1 - interruptMode
+#
+# Converts a given pin number to its corresponding GPIO number
+#------------------------------------------------------------------------------
+GPIOEnableInterrupt:
+addi sp, sp, -8									#stacking the variables
+sw s0, 0(sp)
+sw ra, 4(sp)
+
+beq a1, zero, GPIOEnableInterruptRising			#if interruptMode == zero, rising
+addi a1, a1, -1
+
+beq a1, zero, GPIOEnableInterruptFalling		#if interruptMode == 1, falling
+addi a1, a1, -1
+
+beq a1, zero, GPIOEnableInterruptHigh		    #if interruptMode == 2, high
+addi a1, a1, -1
+
+beq a1, zero, GPIOEnableInterruptLow			#if interruptMode == 3, low
+addi a1, a1, -1
+
+GPIOEnableInterruptRising:
+la t0, POSITIVE_EDGE_INTERRUPT_ENABLE			#loading interrupt mask
+lw s0, 0(t0)
+j GPIOEnableInterruptSet
+
+GPIOEnableInterruptFalling:
+la t0, NEGATIVE_EDGE_INTERRUPT_ENABLE			#loading interrupt mask
+lw s0, 0(t0)
+j GPIOEnableInterruptSet
+
+GPIOEnableInterruptHigh:
+la t0, HIGH_INTERRUPT_ENABLE					#loading interrupt mask
+lw s0, 0(t0)
+j GPIOEnableInterruptSet
+
+GPIOEnableInterruptLow:
+la t0, LOW_INTERRUPT_ENABLE						#loading interrupt mask
+lw s0, 0(t0)
+j GPIOEnableInterruptSet
+
+GPIOEnableInterruptSet:
+jal pinToGPIO
+addi t1, zero, 1
+sll t1, t1, a0
+
+#enabling interrupt bit
+lw t2, 0(s0)
+or t2, t1, t2
+sw t2, 0(s0)
+
+lw s0, 0(sp)
+lw ra, 4(sp)
+
+addi sp, sp, 8
+ret
