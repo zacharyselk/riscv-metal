@@ -1,9 +1,19 @@
 .global main
+.data
+.align 0
+string:	.byte 80
+
 .text
 
 main:
 addi sp, sp, -4
 sw ra, 0(sp)
+
+la	a0, string
+addi t0, zero, 65
+sb t0, 0(a0)
+sb zero, 1(a0)
+jal print
 
 addi t0, zero, 1
 slli t0, t0, 25
